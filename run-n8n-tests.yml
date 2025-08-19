@@ -1,0 +1,50 @@
+name: Run Tests via n8n
+
+# This workflow is triggered by an API call (workflow_dispatch)
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'The Pull Request number'
+        required: true
+      n8n_webhook_url:
+        description: 'The n8n webhook to send results to'
+        required: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        # The 'continue-on-error' allows the workflow to proceed to the reporting step even if tests fail
+        continue-on-error: true
+        run: npm test
+        id: test-step
+
+      - name: Notify n8n with results
+        run: |
+          # Determine the status based on the test step's outcome
+          STATUS="success"
+          if [[ "${{ steps.test-step.outcome }}" == "failure" ]]; then
+            STATUS="failure"
+          fi
+          
+          # Send a JSON payload back to the n8n results webhook
+          curl -X POST ${{ inputs.n8n_webhook_url }} \
+          -H "Content-Type: application/json" \
+          --data-raw '{
+            "pr_number": "${{ inputs.pr_number }}",
+            "status": "'"$STATUS"'",
+            "logsUrl": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }'
